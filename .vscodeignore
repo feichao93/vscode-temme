@@ -1,0 +1,4 @@
+.vscode/**
+fixtures
+node_modules
+.gitignore

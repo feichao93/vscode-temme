@@ -1,38 +1,36 @@
 import fs from 'fs'
 import path from 'path'
-import temme, { temmeParser, TemmeSelector } from 'temme'
+import temme, { temmeParser } from 'temme'
 import fetch from 'node-fetch'
+import debounce from 'lodash.debounce'
 import {
-  window,
-  workspace,
+  CancellationToken,
+  CodeActionContext,
+  CodeActionProvider,
+  Command,
   commands,
-  ExtensionContext,
-  DocumentSymbolProvider,
-  TextDocument,
+  Diagnostic,
+  DiagnosticCollection,
   DocumentFilter,
+  DocumentSymbolProvider,
+  ExtensionContext,
   languages,
   Position,
-  CancellationToken,
-  SymbolInformation,
-  DiagnosticCollection,
-  CodeActionProvider,
   Range,
-  Diagnostic,
-  CodeActionContext,
-  Command,
-  DiagnosticSeverity,
+  SymbolInformation,
+  TextDocument,
   Uri,
   ViewColumn,
+  window,
+  workspace,
 } from 'vscode'
 
 const TEMME_MODE: DocumentFilter = { language: 'temme', scheme: 'file' }
 
-const linkPattern = /((?:https?:\/\/)|(?:file:\/\/\/))([-a-zA-Z0-9@:%_\+.~#?&//=]+)\b/gi
+const linkPattern = /((?:https?:\/\/)|(?:file:\/\/\/))([-a-zA-Z0-9@:%_+.~#?&/=]+)\b/gi
 
 // let log: OutputChannel
 let diagnosticCollection: DiagnosticCollection
-let lastError: any
-let parsed: TemmeSelector[] | null = null
 
 class TemmeDocumentSymbolProvider implements DocumentSymbolProvider {
   public async provideDocumentSymbols(
@@ -54,47 +52,49 @@ function onChangeTemmeSelector() {
     return
   }
   try {
-    parsed = temmeParser.parse(document.getText())
+    temmeParser.parse(document.getText())
     diagnosticCollection.clear()
   } catch (e) {
-    lastError = e
-    parsed = null
     let start: Position
     let end: Position
     if (e.location.start != null && e.location.end != null) {
       start = new Position(e.location.start.line - 1, e.location.start.column - 1)
-      end = new Position(e.location.end.line - 1, e.location.end.column - 1)
+      const endLine = e.location.end.line - 1
+      end = new Position(endLine, document.lineAt(endLine).text.length)
     } else {
       // 如果错误位置无法确定的话，就使用第一行
       // TODO 放在非空白的第一行效果更好一些
       start = new Position(0, 0)
       end = new Position(0, document.lineAt(0).text.length)
     }
-    diagnosticCollection.set(document.uri, [
-      new Diagnostic(new Range(start, end), e.message, DiagnosticSeverity.Information),
-    ])
+    diagnosticCollection.set(document.uri, [new Diagnostic(new Range(start, end), e.message)])
   }
 }
+
+const debouncedOnChangeTemmeSelector = debounce(onChangeTemmeSelector, 300)
 
 async function pickLink(document: TextDocument) {
   const text = document.getText()
   const links: string[] = []
 
   linkPattern.lastIndex = 0
-  let i = 0
-  while (true && i++ < 100) {
+  while (true) {
     const match = linkPattern.exec(text)
     if (match == null) {
       break
     }
     links.push(match[0])
   }
-  if (i >= 100) {
-    window.showWarningMessage('Infinity loop!')
-  }
   linkPattern.lastIndex = 0
 
-  return await window.showQuickPick(links, { placeHolder: 'Choose an url:' })
+  if (links.length === 0) {
+    window.showInformationMessage('No link is found in current file.')
+    return
+  } else if (links.length === 1) {
+    return links[0]
+  } else {
+    return await window.showQuickPick(links, { placeHolder: 'Choose an url:' })
+  }
 }
 
 async function downloadHtmlFromUrl(url: string) {
@@ -105,8 +105,7 @@ async function downloadHtmlFromUrl(url: string) {
   }
 
   if (isFileLink) {
-    const html = fs.readFileSync(url, 'utf8')
-    return html
+    return fs.readFileSync(url, 'utf8')
   } else {
     const response = await fetch(url)
     if (response.ok) {
@@ -146,11 +145,10 @@ async function runSelector(url?: string) {
     const visibleDocs = new Set(window.visibleTextEditors.map(editor => editor.document))
     if (!visibleDocs.has(outputDocument)) {
       await window.showTextDocument(outputDocument, ViewColumn.Two)
-    } else {
-      await window.showInformationMessage('Success')
     }
+    await window.showInformationMessage('Success')
   } catch (e) {
-    window.showErrorMessage(e.message + '\n' + e.stack)
+    window.showErrorMessage(e.stack || e.message)
   }
 }
 
@@ -189,7 +187,7 @@ export function activate(ctx: ExtensionContext) {
     commands.registerCommand('temme.runSelector', runSelector),
     languages.registerDocumentSymbolProvider(TEMME_MODE, new TemmeDocumentSymbolProvider()),
     languages.registerCodeActionsProvider(TEMME_MODE, new TemmeCodeActionProvider()),
-    workspace.onDidChangeTextDocument(onChangeTemmeSelector),
+    workspace.onDidChangeTextDocument(debouncedOnChangeTemmeSelector),
     diagnosticCollection,
   )
 

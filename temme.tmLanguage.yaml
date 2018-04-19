@@ -169,9 +169,15 @@ repository:
     - begin: "/\\*"
       end: "\\*/"
       name: comment.block
+      patterns:
+      - match: "((?:https?:\\/\\/)|(?:file:\\/\\/\\/))([-a-zA-Z0-9@:%_+.~#?&/=]+)"
+        name: variable.parameter.url.temme
     - name: comment.line
       begin: "\\/\\/"
       end: "$"
+      patterns:
+      - match: "((?:https?:\\/\\/)|(?:file:\\/\\/\\/))([-a-zA-Z0-9@:%_+.~#?&/=]+)"
+        name: variable.parameter.url.temme
 
   JSLiteral:
     patterns:
