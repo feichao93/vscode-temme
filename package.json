@@ -1,0 +1,68 @@
+{
+  "name": "temme-vscode-extension",
+  "private": true,
+  "license": "MIT",
+  "displayName": "Temme",
+  "description": "Temme selector syntax support for VS Code.",
+  "version": "0.7.0-SNAPSHOT",
+  "publisher": "shinima",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shinima/temme.git"
+  },
+  "main": "./out/index.js",
+  "scripts": {
+    "start": "supervisor --no-restart-on exit --watch temme.tmLanguage.yaml -e yaml -- compile.js",
+    "build": "node compile.js",
+    "watch": "tsc -watch -p ./",
+    "compile": "tsc -p ./"
+  },
+  "engines": {
+    "vscode": "^1.22.0"
+  },
+  "categories": ["Languages"],
+  "activationEvents": ["onCommand:temme.runSelector", "onLanguage:temme"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "temme",
+        "aliases": ["temme", "temme"],
+        "extensions": [".temme"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "temme",
+        "scopeName": "source.temme",
+        "path": "./out/temme.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "temme.runSelector",
+        "category": "Temme",
+        "title": "Run Temme Selector"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^9.6.5",
+    "js-yaml": "^3.11.0",
+    "mkdirp": "^0.5.1",
+    "supervisor": "^0.12.0",
+    "typescript": "^2.8.1",
+    "vscode": "^1.1.14"
+  },
+  "dependencies": {
+    "@types/node-fetch": "^1.6.8",
+    "node-fetch": "^2.1.2",
+    "temme": "^0.6.1"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "semi": false,
+    "singleQuote": true,
+    "trailingComma": "all"
+  }
+}
