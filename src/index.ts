@@ -26,8 +26,7 @@ import {
 } from 'vscode'
 
 const TEMME_MODE: DocumentFilter = { language: 'temme', scheme: 'file' }
-
-const linkPattern = /((?:https?:\/\/)|(?:file:\/\/\/))([-a-zA-Z0-9@:%_+.~#?&/=]+)\b/gi
+const TAGGED_LINK_PATTERN = /(<.*>)\s*(.+)$/
 
 // let log: OutputChannel
 let diagnosticCollection: DiagnosticCollection
@@ -37,7 +36,7 @@ class TemmeDocumentSymbolProvider implements DocumentSymbolProvider {
     document: TextDocument,
     token: CancellationToken,
   ): Promise<SymbolInformation[]> {
-    // TODO xx
+    // TODO TemmeDocumentSymbolProvider
     return []
   }
 }
@@ -63,7 +62,6 @@ function onChangeTemmeSelector() {
       end = new Position(endLine, document.lineAt(endLine).text.length)
     } else {
       // 如果错误位置无法确定的话，就使用第一行
-      // TODO 放在非空白的第一行效果更好一些
       start = new Position(0, 0)
       end = new Position(0, document.lineAt(0).text.length)
     }
@@ -73,27 +71,37 @@ function onChangeTemmeSelector() {
 
 const debouncedOnChangeTemmeSelector = debounce(onChangeTemmeSelector, 300)
 
+/** 从文档中挑选链接。
+ * 如果文档中没有链接，则什么也不做
+ * 如果文档中只有一个链接，则直接使用该链接
+ * 如果文档中有多个链接，则弹出快速选择框让用户进行选择
+ * */
 async function pickLink(document: TextDocument) {
-  const text = document.getText()
-  const links: string[] = []
+  const taggedLinks: { tag: string; link: string }[] = []
 
-  linkPattern.lastIndex = 0
-  while (true) {
-    const match = linkPattern.exec(text)
-    if (match == null) {
-      break
+  const lineCount = document.lineCount
+  for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+    const line = document.lineAt(lineIndex)
+    const match = line.text.match(TAGGED_LINK_PATTERN)
+    if (match) {
+      taggedLinks.push({
+        tag: match[1],
+        link: match[2].trim(),
+      })
     }
-    links.push(match[0])
   }
-  linkPattern.lastIndex = 0
 
-  if (links.length === 0) {
+  if (taggedLinks.length === 0) {
     window.showInformationMessage('No link is found in current file.')
     return
-  } else if (links.length === 1) {
-    return links[0]
+  } else if (taggedLinks.length === 1) {
+    return taggedLinks[0].link
   } else {
-    return await window.showQuickPick(links, { placeHolder: 'Choose an url:' })
+    const options = taggedLinks.map(({ tag, link }) => `${tag} ${link}`)
+    const result = await window.showQuickPick(options, { placeHolder: 'Choose an url:' })
+    if (result) {
+      return taggedLinks[options.indexOf(result)].link
+    }
   }
 }
 
@@ -152,6 +160,16 @@ async function runSelector(url?: string) {
   }
 }
 
+async function startWatch(url?: string) {
+  // TODO
+  window.showWarningMessage('command temme.startWatch NOT IMPLEMENTED')
+}
+
+async function stopWatch() {
+  // TODO
+  window.showWarningMessage('command temme.stopWatch NOT IMPLEMENTED')
+}
+
 class TemmeCodeActionProvider implements CodeActionProvider {
   async provideCodeActions(
     document: TextDocument,
@@ -164,15 +182,17 @@ class TemmeCodeActionProvider implements CodeActionProvider {
       return null
     }
     const currentLineText = document.lineAt(editor.selection.start.line).text
-    const match = currentLineText.match(linkPattern)
+    const match = currentLineText.match(TAGGED_LINK_PATTERN)
     if (match != null) {
-      const url = match[0]
+      const tag = match[1]
+      const link = match[2].trim()
       return [
         {
-          title: `Run selector against ${url}`,
+          title: `Run selector ${tag}`,
           command: 'temme.runSelector',
-          arguments: [url],
+          arguments: [link],
         } as Command,
+        { title: `Start watching ${tag} TODO` },
       ]
     } else {
       return null
@@ -185,6 +205,8 @@ export function activate(ctx: ExtensionContext) {
 
   ctx.subscriptions.push(
     commands.registerCommand('temme.runSelector', runSelector),
+    commands.registerCommand('temme.startWatch', startWatch),
+    commands.registerCommand('temme.stopWatch', stopWatch),
     languages.registerDocumentSymbolProvider(TEMME_MODE, new TemmeDocumentSymbolProvider()),
     languages.registerCodeActionsProvider(TEMME_MODE, new TemmeCodeActionProvider()),
     workspace.onDidChangeTextDocument(debouncedOnChangeTemmeSelector),
