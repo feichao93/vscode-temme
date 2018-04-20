@@ -9,7 +9,7 @@ repository:
   temme-selector:
     patterns:
     - include: "#comments"
-    - include: "#JSLiteral" # // TODO 这个规则应该只能在赋值的时候才有效
+    - include: "#JSLiteral" # 这个规则还可以改进
 
     - comment: "CSS selector id-qualifier"
       match: "#[_[:alnum:]-]+"
@@ -145,7 +145,6 @@ repository:
 
   inline-filter-definition:
     patterns:
-    # // TODO 完善 inline-filter-definition 语法高亮
     - begin: "(filter)\\s+([_$[:alpha:]][_$[:alnum:]]*)"
       beginCaptures:
         1: { name: storage.filter.temme }
@@ -156,7 +155,7 @@ repository:
         end: "\\)"
         contentName: meta.filter-definition-parameters.temme
         patterns:
-        # // TODO 这里不应该使用 temme 的parameters，而是需要使用 JavaScript 的方式
+        # // TODO 这里需要使用 JavaScript 的方式
         - include: "#parameters-body"
       - begin: "\\{"
         end: "\\}"

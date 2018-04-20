@@ -1,8 +1,8 @@
+import EventEmitter from 'events'
 import fs from 'fs'
-import path from 'path'
-import temme, { temmeParser } from 'temme'
 import fetch from 'node-fetch'
-import debounce from 'lodash.debounce'
+import path from 'path'
+import temme, { cheerio, temmeParser } from 'temme'
 import {
   CancellationToken,
   CodeActionContext,
@@ -23,13 +23,24 @@ import {
   ViewColumn,
   window,
   workspace,
+  StatusBarItem,
+  StatusBarAlignment,
+  TextDocumentChangeEvent,
+  WorkspaceEdit,
+  OutputChannel,
 } from 'vscode'
 
 const TEMME_MODE: DocumentFilter = { language: 'temme', scheme: 'file' }
 const TAGGED_LINK_PATTERN = /(<.*>)\s*(.+)$/
 
-// let log: OutputChannel
+type Status = 'idle' | 'running' | 'watching'
+
+let log: OutputChannel
+let emitter: EventEmitter
 let diagnosticCollection: DiagnosticCollection
+let statusBarItem: StatusBarItem
+let status: Status
+let callback: any
 
 class TemmeDocumentSymbolProvider implements DocumentSymbolProvider {
   public async provideDocumentSymbols(
@@ -41,22 +52,16 @@ class TemmeDocumentSymbolProvider implements DocumentSymbolProvider {
   }
 }
 
-function onChangeTemmeSelector() {
-  const editor = window.activeTextEditor
-  if (editor == null) {
-    return
-  }
-  const document = editor.document
-  if (document.languageId !== 'temme') {
-    return
-  }
+/** 在用户进行编辑选择器的时候，该函数将会运行
+ * 解析用户输入的 temme 选择器，并报告选择器语法错误 */
+function detectAndReportTemmeGrammarError(document: TextDocument) {
   try {
     temmeParser.parse(document.getText())
-    diagnosticCollection.clear()
+    diagnosticCollection.delete(document.uri)
   } catch (e) {
     let start: Position
     let end: Position
-    if (e.location.start != null && e.location.end != null) {
+    if (e.location != null && e.location.start != null && e.location.end != null) {
       start = new Position(e.location.start.line - 1, e.location.start.column - 1)
       const endLine = e.location.end.line - 1
       end = new Position(endLine, document.lineAt(endLine).text.length)
@@ -68,8 +73,6 @@ function onChangeTemmeSelector() {
     diagnosticCollection.set(document.uri, [new Diagnostic(new Range(start, end), e.message)])
   }
 }
-
-const debouncedOnChangeTemmeSelector = debounce(onChangeTemmeSelector, 300)
 
 /** 从文档中挑选链接。
  * 如果文档中没有链接，则什么也不做
@@ -105,7 +108,7 @@ async function pickLink(document: TextDocument) {
   }
 }
 
-async function downloadHtmlFromUrl(url: string) {
+async function downloadHtmlFromLink(url: string) {
   let isFileLink = false
   if (url.startsWith('file:///')) {
     url = url.replace('file:///', '')
@@ -124,7 +127,7 @@ async function downloadHtmlFromUrl(url: string) {
   }
 }
 
-async function runSelector(url?: string) {
+async function getLink(link?: string) {
   const editor = window.activeTextEditor
   if (editor == null) {
     window.showWarningMessage('No file opened.')
@@ -135,15 +138,23 @@ async function runSelector(url?: string) {
     window.showWarningMessage('Not a temme file.')
     return
   }
-  if (url == null) {
-    url = await pickLink(document)
+  if (link == null) {
+    link = await pickLink(document)
   }
-  if (url == null) {
+  return link
+}
+
+async function runSelector(link?: string) {
+  link = await getLink(link)
+  if (link == null) {
     return
   }
+  const document = window.activeTextEditor!.document
 
   try {
-    const html = await downloadHtmlFromUrl(url)
+    status = 'running'
+    statusBarItem.text = status
+    const html = await downloadHtmlFromLink(link)
     const result = temme(html, document.getText())
     const outputContent = JSON.stringify(result, null, 2)
     const outputFileName = path.resolve(document.uri.fsPath, '../', `${document.fileName}.json`)
@@ -157,17 +168,91 @@ async function runSelector(url?: string) {
     await window.showInformationMessage('Success')
   } catch (e) {
     window.showErrorMessage(e.stack || e.message)
+  } finally {
+    status = 'idle'
+    statusBarItem.text = status
   }
 }
 
-async function startWatch(url?: string) {
-  // TODO
-  window.showWarningMessage('command temme.startWatch NOT IMPLEMENTED')
+async function startWatch(link?: string) {
+  stopWatch()
+  const editor = window.activeTextEditor
+  if (editor == null) {
+    return
+  }
+  const temmeDocument = editor.document
+  if (temmeDocument.languageId !== 'temme') {
+    return
+  }
+
+  link = await getLink(link)
+  if (link == null) {
+    return
+  }
+
+  try {
+    status = 'watching'
+    statusBarItem.text = '$(zap) watching'
+    statusBarItem.tooltip = 'Click to exit temme watch mode.'
+    statusBarItem.command = 'temme.stopWatch'
+
+    const html = await downloadHtmlFromLink(link)
+    const $ = cheerio.load(html, { decodeEntities: false })
+
+    const outputFileName = path.resolve(
+      temmeDocument.uri.fsPath,
+      '../',
+      `${temmeDocument.fileName}.json`,
+    )
+    const outputDocument = await workspace.openTextDocument(Uri.file(outputFileName))
+    const visibleDocs = new Set(window.visibleTextEditors.map(editor => editor.document))
+    if (!visibleDocs.has(outputDocument)) {
+      await window.showTextDocument(outputDocument, ViewColumn.Two)
+    }
+
+    async function onThisTemmeDocmentChange(changedLine: number) {
+      try {
+        const selector = temmeDocument.getText()
+        const range = new Range(0, 0, outputDocument.lineCount, 0)
+        const result = temme($, selector)
+        const newText = JSON.stringify(result, null, 2)
+        const edit = new WorkspaceEdit()
+        edit.replace(outputDocument.uri, range, newText)
+        await workspace.applyEdit(edit)
+      } catch (e) {
+        if (e.name !== 'SyntaxError') {
+          log.appendLine(e.message)
+          // TODO 错误不一定当前编辑的这一行 或第一行
+          diagnosticCollection.set(temmeDocument.uri, [
+            new Diagnostic(new Range(changedLine, 0, changedLine + 1, 0), e.message),
+          ])
+        }
+      }
+    }
+
+    callback = async function({ document, contentChanges }: TextDocumentChangeEvent) {
+      if (document === temmeDocument) {
+        await onThisTemmeDocmentChange(contentChanges[0].range.start.line)
+      }
+    }
+
+    emitter.addListener('did-change-text-document', callback)
+
+    // 手动触发更新
+    await onThisTemmeDocmentChange(0)
+  } catch (e) {
+    window.showErrorMessage(e.message)
+    log.appendLine(e.stack || e.message)
+  }
 }
 
-async function stopWatch() {
-  // TODO
-  window.showWarningMessage('command temme.stopWatch NOT IMPLEMENTED')
+function stopWatch() {
+  if (callback) {
+    emitter.removeListener('did-change-text-document', callback)
+    callback = null
+    status = 'idle'
+    statusBarItem.text = 'status'
+  }
 }
 
 class TemmeCodeActionProvider implements CodeActionProvider {
@@ -192,7 +277,11 @@ class TemmeCodeActionProvider implements CodeActionProvider {
           command: 'temme.runSelector',
           arguments: [link],
         } as Command,
-        { title: `Start watching ${tag} TODO` },
+        {
+          title: `Start watching ${tag}`,
+          command: 'temme.startWatch',
+          arguments: [link],
+        },
       ]
     } else {
       return null
@@ -201,7 +290,14 @@ class TemmeCodeActionProvider implements CodeActionProvider {
 }
 
 export function activate(ctx: ExtensionContext) {
+  status = 'idle'
+  log = window.createOutputChannel('temme')
+  log.show(false)
+  emitter = new EventEmitter()
   diagnosticCollection = languages.createDiagnosticCollection('temme')
+  statusBarItem = window.createStatusBarItem(StatusBarAlignment.Left)
+  statusBarItem.text = 'idle'
+  statusBarItem.show()
 
   ctx.subscriptions.push(
     commands.registerCommand('temme.runSelector', runSelector),
@@ -209,9 +305,18 @@ export function activate(ctx: ExtensionContext) {
     commands.registerCommand('temme.stopWatch', stopWatch),
     languages.registerDocumentSymbolProvider(TEMME_MODE, new TemmeDocumentSymbolProvider()),
     languages.registerCodeActionsProvider(TEMME_MODE, new TemmeCodeActionProvider()),
-    workspace.onDidChangeTextDocument(debouncedOnChangeTemmeSelector),
+    workspace.onDidChangeTextDocument(event => {
+      if (event.document.languageId === 'temme') {
+        emitter.emit('did-change-text-document', event)
+        detectAndReportTemmeGrammarError(event.document)
+      }
+    }),
+    // TODO 处理 window.onDidChangeActiveTextEditor
     diagnosticCollection,
+    statusBarItem,
   )
 
-  onChangeTemmeSelector()
+  if (window.activeTextEditor && window.activeTextEditor.document.languageId === 'temme') {
+    detectAndReportTemmeGrammarError(window.activeTextEditor.document)
+  }
 }
