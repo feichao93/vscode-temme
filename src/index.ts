@@ -1,7 +1,10 @@
 import EventEmitter from 'events'
-import fs from 'fs'
 import path from 'path'
 import temme, { cheerio, temmeParser } from 'temme'
+import { TAGGED_LINK_PATTERN, TEMME_MODE } from './constants'
+import StatusBarController from './StatusBarController'
+import TemmeCodeActionProvider from './TemmeCodeActionProvider'
+import TemmeDocumentSymbolProvider from './TemmeDocumentSymbolProvider'
 import {
   commands,
   Diagnostic,
@@ -14,16 +17,17 @@ import {
   TextDocument,
   TextDocumentChangeEvent,
   Uri,
-  ViewColumn,
   window,
   workspace,
-  WorkspaceEdit,
 } from 'vscode'
-import StatusBarController from './StatusBarController'
-import { TAGGED_LINK_PATTERN, TEMME_MODE } from './constants'
-import TemmeCodeActionProvider from './TemmeCodeActionProvider'
-import TemmeDocumentSymbolProvider from './TemmeDocumentSymbolProvider'
-import { downloadHtmlFromLink } from './utils'
+import {
+  downloadHtmlFromLink,
+  isTemmeDocActive,
+  openOutputDocument,
+  placeViewColumnTwoIfNotVisible,
+  pprint,
+  replaceWholeDocument,
+} from './utils'
 
 type Status = 'ready' | 'running' | 'watching'
 
@@ -32,7 +36,6 @@ let emitter: EventEmitter
 let diagnosticCollection: DiagnosticCollection
 let status: Status
 let changeCallback: any
-let closeCallback: any
 let statusBarController: StatusBarController
 
 /** 解析文档中的 temme 选择器，并报告选择器语法错误 */
@@ -58,7 +61,6 @@ function detectAndReportTemmeGrammarError(temmeDoc: TextDocument) {
 
 /** 从temme文档中挑选链接。
  * 如果文档中没有链接，则什么也不做
- * 如果文档中只有一个链接，则直接使用该链接
  * 如果文档中有多个链接，则弹出快速选择框让用户进行选择
  * */
 async function pickLink(temmeDoc: TextDocument) {
@@ -79,8 +81,6 @@ async function pickLink(temmeDoc: TextDocument) {
   if (taggedLinks.length === 0) {
     window.showInformationMessage('No link is found in current file.')
     return
-  } else if (taggedLinks.length === 1) {
-    return taggedLinks[0].link
   } else {
     const options = taggedLinks.map(({ tag, link }) => `${tag} ${link}`)
     const result = await window.showQuickPick(options, { placeHolder: 'Choose an url:' })
@@ -93,7 +93,7 @@ async function pickLink(temmeDoc: TextDocument) {
 async function getLink(link?: string) {
   const editor = window.activeTextEditor
   if (editor == null) {
-    window.showWarningMessage('No file opened.')
+    window.showWarningMessage('No temme file opened.')
     return
   }
   const document = editor.document
@@ -112,78 +112,59 @@ async function runSelector(link?: string) {
   if (link == null) {
     return
   }
-  const document = window.activeTextEditor!.document
+  const temmeDoc = window.activeTextEditor!.document
 
   try {
     status = 'running'
-    statusBarController.setText('running', false)
+    statusBarController.setRunning()
     const html = await downloadHtmlFromLink(link)
-    const result = temme(html, document.getText())
-    const outputContent = JSON.stringify(result, null, 2)
-    const outputFileName = path.resolve(document.uri.fsPath, '../', `${document.fileName}.json`)
-    fs.writeFileSync(outputFileName, outputContent, 'utf8')
-
-    const outputDocument = await workspace.openTextDocument(Uri.file(outputFileName))
-    const visibleDocs = new Set(window.visibleTextEditors.map(editor => editor.document))
-    if (!visibleDocs.has(outputDocument)) {
-      await window.showTextDocument(outputDocument, ViewColumn.Two)
-    }
-    await window.showInformationMessage('Success')
+    const result = temme(html, temmeDoc.getText())
+    const outputDoc = await openOutputDocument(temmeDoc)
+    await placeViewColumnTwoIfNotVisible(outputDoc)
+    await window.showTextDocument(temmeDoc)
+    await replaceWholeDocument(outputDoc, pprint(result))
+    window.showInformationMessage('Success')
   } catch (e) {
-    window.showErrorMessage(e.stack || e.message)
-  } finally {
-    status = 'ready'
-    statusBarController.setText('ready', false)
+    window.showErrorMessage(e.message)
   }
+
+  status = 'ready'
+  statusBarController.autoUpdate()
 }
 
 async function startWatch(link?: string) {
-  stopWatch()
-  const editor = window.activeTextEditor
-  if (editor == null) {
-    return
-  }
-  const temmeDocument = editor.document
-  if (temmeDocument.languageId !== 'temme') {
+  stop()
+  if (!isTemmeDocActive()) {
     return
   }
 
+  const temmeDoc = window.activeTextEditor!.document
   link = await getLink(link)
   if (link == null) {
     return
   }
 
-  try {
-    status = 'watching'
-    statusBarController.setText('watching', true)
+  status = 'watching'
+  statusBarController.setWatching()
 
+  try {
     const html = await downloadHtmlFromLink(link)
     const $ = cheerio.load(html, { decodeEntities: false })
 
-    const outputFileName = path.resolve(
-      temmeDocument.uri.fsPath,
-      '../',
-      `${temmeDocument.fileName}.json`,
-    )
-    const outputDocument = await workspace.openTextDocument(Uri.file(outputFileName))
-    const visibleDocs = new Set(window.visibleTextEditors.map(editor => editor.document))
-    if (!visibleDocs.has(outputDocument)) {
-      await window.showTextDocument(outputDocument, ViewColumn.Two)
-    }
+    const outputFileName = path.resolve(temmeDoc.uri.fsPath, '../', `${temmeDoc.fileName}.json`)
+    const outputDoc = await workspace.openTextDocument(Uri.file(outputFileName))
+    await placeViewColumnTwoIfNotVisible(outputDoc)
+    await window.showTextDocument(temmeDoc)
 
     async function onThisTemmeDocumentChange(changedLine: number) {
       try {
-        const selector = temmeDocument.getText()
-        const range = new Range(0, 0, outputDocument.lineCount, 0)
-        const result = temme($, selector)
-        const newText = JSON.stringify(result, null, 2)
-        const edit = new WorkspaceEdit()
-        edit.replace(outputDocument.uri, range, newText)
-        await workspace.applyEdit(edit)
+        const result = temme($, temmeDoc.getText())
+        log.appendLine('outputDoc.isClosed: ' + outputDoc.isClosed)
+        await replaceWholeDocument(outputDoc, pprint(result))
       } catch (e) {
         if (e.name !== 'SyntaxError') {
-          // TODO 错误不一定当前编辑的这一行 或第一行
-          diagnosticCollection.set(temmeDocument.uri, [
+          // TODO 错误不一定在当前编辑的这一行 或第一行
+          diagnosticCollection.set(temmeDoc.uri, [
             new Diagnostic(new Range(changedLine, 0, changedLine + 1, 0), e.message),
           ])
         }
@@ -191,29 +172,16 @@ async function startWatch(link?: string) {
       }
     }
 
-    closeCallback = async function() {
-      log.appendLine(
-        'text-docs: ' +
-          workspace.textDocuments.map(doc => workspace.asRelativePath(doc.uri)).join(', '),
-      )
-      log.appendLine(
-        'visible-docs: ' +
-          window.visibleTextEditors
-            .map(editor => workspace.asRelativePath(editor.document.uri))
-            .join(', '),
-      )
-      if (!workspace.textDocuments.some(doc => doc === outputDocument)) {
-        log.appendLine('Output document closed. Stopping Watch mode...')
-        stopWatch()
-      }
-    }
     changeCallback = async function({ document, contentChanges }: TextDocumentChangeEvent) {
-      if (document === temmeDocument) {
-        await onThisTemmeDocumentChange(contentChanges[0].range.start.line)
+      if (document === temmeDoc) {
+        let line = 0
+        if (contentChanges.length > 0) {
+          line = contentChanges[0].range.start.line
+        }
+        await onThisTemmeDocumentChange(line)
       }
     }
 
-    emitter.addListener('did-change-active-text-editor', closeCallback)
     emitter.addListener('did-change-text-document', changeCallback)
 
     // 手动触发更新
@@ -224,23 +192,23 @@ async function startWatch(link?: string) {
   }
 }
 
-function stopWatch() {
-  log.appendLine('stopWatch ' + status)
+function stop() {
+  log.appendLine(`[temme] in stop() & current-status: ${status}`)
   if (status === 'watching') {
-    emitter.removeListener('did-change-active-text-editor', closeCallback)
     emitter.removeListener('did-change-text-document', changeCallback)
-    closeCallback = null
     changeCallback = null
     status = 'ready'
-    statusBarController.setText('idle', false)
+    statusBarController.autoUpdate()
+  } else if (status === 'running') {
+    log.appendLine('cancelling a running task is not supported')
+  } else {
+    log.appendLine('status is ready. nothing to stop')
   }
-  // TODO if (status === 'running') ???
 }
 
 export function activate(ctx: ExtensionContext) {
   status = 'ready'
   log = window.createOutputChannel('temme')
-  log.show() // TODO remove this line
 
   emitter = new EventEmitter()
   diagnosticCollection = languages.createDiagnosticCollection('temme')
@@ -249,28 +217,31 @@ export function activate(ctx: ExtensionContext) {
   ctx.subscriptions.push(
     commands.registerCommand('temme.runSelector', runSelector),
     commands.registerCommand('temme.startWatch', startWatch),
-    commands.registerCommand('temme.stopWatch', stopWatch),
+    commands.registerCommand('temme.stop', stop),
     languages.registerDocumentSymbolProvider(TEMME_MODE, new TemmeDocumentSymbolProvider()),
     languages.registerCodeActionsProvider(TEMME_MODE, new TemmeCodeActionProvider()),
     workspace.onDidChangeTextDocument(event => {
       if (event.document.languageId === 'temme') {
-        emitter.emit('did-change-text-document', event)
         detectAndReportTemmeGrammarError(event.document)
+        emitter.emit('did-change-text-document', event)
       }
     }),
-    window.onDidChangeActiveTextEditor(event => {
-      emitter.emit('did-change-active-text-editor', event)
+    window.onDidChangeActiveTextEditor(() => {
+      if (status === 'ready') {
+        statusBarController.autoUpdate()
+      }
     }),
     diagnosticCollection,
     statusBarController,
     {
       dispose() {
-        stopWatch()
+        stop()
       },
     },
   )
 
-  if (window.activeTextEditor && window.activeTextEditor.document.languageId === 'temme') {
-    detectAndReportTemmeGrammarError(window.activeTextEditor.document)
+  if (isTemmeDocActive()) {
+    statusBarController.setReady()
+    detectAndReportTemmeGrammarError(window.activeTextEditor!.document)
   }
 }

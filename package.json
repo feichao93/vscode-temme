@@ -20,19 +20,26 @@
   "engines": {
     "vscode": "^1.22.0"
   },
-  "categories": ["Languages"],
+  "categories": [
+    "Languages"
+  ],
   "activationEvents": [
     "onLanguage:temme",
     "onCommand:temme.runSelector",
     "onCommand:temme.startWatch",
-    "onCommand:temme.stopWatch"
+    "onCommand:temme.stop"
   ],
   "contributes": {
     "languages": [
       {
         "id": "temme",
-        "aliases": ["temme", "temme"],
-        "extensions": [".temme"],
+        "aliases": [
+          "temme",
+          "temme"
+        ],
+        "extensions": [
+          ".temme"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -55,9 +62,9 @@
         "title": "Start watch"
       },
       {
-        "command": "temme.stopWatch",
+        "command": "temme.stop",
         "category": "Temme",
-        "title": "Stop watch"
+        "title": "Stop running/watching"
       }
     ]
   },
