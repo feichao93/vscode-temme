@@ -1,8 +1,8 @@
 **This extension is still working in process.**
 
-# temme-vscode-extension
+# vscode-temme
 
-VSCode extension for [temme selector](https://github.com/shinima/temme). This extension add supports syntax hilighting for .temme files, and supports running selector in VSCode.
+VSCode extension for [temme selector](https://github.com/shinima/temme). This extension add supports syntax highlighting for .temme files, and supports running selector in VSCode.
 
 ## Features
 
@@ -20,7 +20,7 @@ None.
 
 ## Known Issues
 
-If you have any question or find any problem, just fire an issue [here](https://github.com/shinima/temme-vscode-extension/issues).   O(∩_∩)O
+If you have any question or find any problem, just fire an issue [here](https://github.com/shinima/vscode-temme/issues).   O(∩_∩)O
 
 ## Release Notes
 
