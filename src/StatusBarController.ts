@@ -37,7 +37,6 @@ export default class StatusBarController {
   }
 
   setReady() {
-    debugger
     clearInterval(this.handle)
     this.item.text = 'temme: ready'
     this.item.show()
