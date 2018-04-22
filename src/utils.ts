@@ -12,7 +12,7 @@ export async function downloadHtmlFromLink(url: string, base: string) {
   }
 
   if (isHttpLink) {
-    const response = await fetch(url, { timeout: 30000 })
+    const response = await fetch(url, { timeout: 10e3 })
     if (response.ok) {
       return await response.text()
     } else {

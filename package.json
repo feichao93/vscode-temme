@@ -53,12 +53,12 @@
       {
         "command": "temme.startWatch",
         "category": "Temme",
-        "title": "Start watch"
+        "title": "Start watching"
       },
       {
         "command": "temme.stop",
         "category": "Temme",
-        "title": "Stop running/watching"
+        "title": "Stop watching"
       }
     ]
   },

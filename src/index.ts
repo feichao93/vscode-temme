@@ -29,7 +29,7 @@ import {
   replaceWholeDocument,
 } from './utils'
 
-type Status = 'ready' | 'running' | 'watching'
+type Status = 'ready' | 'fetching' | 'watching'
 
 let log: OutputChannel
 let emitter: EventEmitter
@@ -108,6 +108,12 @@ async function getLink(link?: string) {
 }
 
 async function runSelector(link?: string) {
+  if (status === 'fetching') {
+    log.appendLine(`${now()} runSelector when fetching html.`)
+    window.showWarningMessage('Try again after the current running task is completed.')
+    return
+  }
+  stop()
   link = await getLink(link)
   if (link == null) {
     return
@@ -116,11 +122,11 @@ async function runSelector(link?: string) {
   const start = process.hrtime()
 
   try {
-    status = 'running'
-    statusBarController.setRunning()
-    log.appendLine(`${now()} Downloading html from ${link}`)
+    status = 'fetching'
+    statusBarController.setFetching()
+    log.appendLine(`${now()} Fetching html from ${link}`)
     const html = await downloadHtmlFromLink(link, path.resolve(temmeDoc.uri.fsPath, '..'))
-    log.appendLine(`${now()} Download html success`)
+    log.appendLine(`${now()} Fetch html success`)
     const result = temme(html, temmeDoc.getText())
     const outputDoc = await openOutputDocument(temmeDoc)
     await placeViewColumnTwoIfNotVisible(outputDoc)
@@ -141,6 +147,11 @@ async function runSelector(link?: string) {
 }
 
 async function startWatch(link?: string) {
+  if (status === 'fetching') {
+    log.appendLine(`${now()} runSelector when fetching html.`)
+    window.showWarningMessage('Try again after the current running task is completed.')
+    return
+  }
   stop()
   if (!isTemmeDocActive()) {
     return
@@ -152,8 +163,8 @@ async function startWatch(link?: string) {
     return
   }
 
-  status = 'watching'
-  statusBarController.setWatching()
+  status = 'fetching'
+  statusBarController.setFetching()
 
   try {
     log.appendLine(`${now()} Downloading html from ${link}`)
@@ -165,7 +176,7 @@ async function startWatch(link?: string) {
     await placeViewColumnTwoIfNotVisible(outputDoc)
     await window.showTextDocument(temmeDoc)
 
-    async function onThisTemmeDocumentChange(changedLine: number) {
+    async function onThisTemmeDocumentChange() {
       const start = process.hrtime()
       try {
         const result = temme($, temmeDoc.getText())
@@ -174,33 +185,35 @@ async function startWatch(link?: string) {
         const timeInMS = diff[0] * 1e3 + diff[1] / 1e6
         log.appendLine(`${now()} Selector executed in ${timeInMS}ms`)
       } catch (e) {
-        if (e.name !== 'SyntaxError') {
-          // TODO 错误不一定在当前编辑的这一行 或第一行
+        if (e.name === 'SyntaxError' && !e.message.includes('pseudo-class')) {
+          log.appendLine(`${e.name}  ${e.message}`)
+        } else {
+          // TODO 需要根据错误信息来获取出错的那一行
+          const errorLine = 0
           diagnosticCollection.set(temmeDoc.uri, [
-            new Diagnostic(new Range(changedLine, 0, changedLine + 1, 0), e.message),
+            new Diagnostic(
+              new Range(errorLine, 0, errorLine + 1, 0),
+              'Runtime Error: ' + e.message,
+            ),
           ])
           log.appendLine(e.stack || e.message)
-        } else {
-          log.appendLine(e.message)
         }
       }
     }
 
-    changeCallback = async function({ document, contentChanges }: TextDocumentChangeEvent) {
+    changeCallback = async function({ document }: TextDocumentChangeEvent) {
       if (document === temmeDoc) {
-        let line = 0
-        if (contentChanges.length > 0) {
-          line = contentChanges[0].range.start.line
-        }
-        await onThisTemmeDocumentChange(line)
+        await onThisTemmeDocumentChange()
       }
     }
 
     log.appendLine(`${now()} Start watching ${temmeDoc.uri.toString(true)}`)
     emitter.addListener('did-change-text-document', changeCallback)
+    status = 'watching'
+    statusBarController.setWatching()
 
     // 手动触发更新
-    await onThisTemmeDocumentChange(0)
+    await onThisTemmeDocumentChange()
   } catch (e) {
     window.showErrorMessage(e.message)
     log.appendLine(`${now()} Fail to start watching due to the following error:`)

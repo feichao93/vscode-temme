@@ -30,12 +30,12 @@ export default class TemmeCodeActionProvider implements CodeActionProvider {
       const link = match[2].trim()
       return [
         {
-          title: `Run selector ${tag}`,
+          title: `Temme: run ${tag}`,
           command: 'temme.runSelector',
           arguments: [link],
         } as Command,
         {
-          title: `Start watching ${tag}`,
+          title: `Temme: watch ${tag}`,
           command: 'temme.startWatch',
           arguments: [link],
         },

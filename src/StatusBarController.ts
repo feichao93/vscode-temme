@@ -27,10 +27,10 @@ export default class StatusBarController {
     }
   }
 
-  setRunning() {
+  setFetching() {
     clearInterval(this.handle)
     this.handle = setInterval(() => {
-      this.item.text = `${spinner()} temme: running`
+      this.item.text = `${spinner()} temme: fetching html`
     }, 50)
     this.item.show()
     this.cancelButton.hide()
@@ -47,7 +47,7 @@ export default class StatusBarController {
     clearInterval(this.handle)
     this.handle = setInterval(() => {
       this.item.text = `${spinner()} temme: watching`
-    }, 50)
+    }, 150)
     this.item.show()
     this.cancelButton.show()
   }
