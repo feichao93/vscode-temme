@@ -1,5 +1,4 @@
 import EventEmitter from 'events'
-import path from 'path'
 import temme, { cheerio, temmeParser } from 'temme'
 import { TAGGED_LINK_PATTERN, TEMME_MODE } from './constants'
 import StatusBarController from './StatusBarController'
@@ -16,13 +15,13 @@ import {
   Range,
   TextDocument,
   TextDocumentChangeEvent,
-  Uri,
   window,
   workspace,
 } from 'vscode'
 import {
   downloadHtmlFromLink,
   isTemmeDocActive,
+  now,
   openOutputDocument,
   placeViewColumnTwoIfNotVisible,
   pprint,
@@ -117,7 +116,9 @@ async function runSelector(link?: string) {
   try {
     status = 'running'
     statusBarController.setRunning()
+    log.appendLine(`${now()} Downloading html from ${link}`)
     const html = await downloadHtmlFromLink(link)
+    log.appendLine(`${now()} Download html success`)
     const result = temme(html, temmeDoc.getText())
     const outputDoc = await openOutputDocument(temmeDoc)
     await placeViewColumnTwoIfNotVisible(outputDoc)
@@ -126,6 +127,8 @@ async function runSelector(link?: string) {
     window.showInformationMessage('Success')
   } catch (e) {
     window.showErrorMessage(e.message)
+    log.appendLine(`${now()} Fail to run selector due to the following error:`)
+    log.appendLine(e.stack || e.message)
   }
 
   status = 'ready'
@@ -148,18 +151,18 @@ async function startWatch(link?: string) {
   statusBarController.setWatching()
 
   try {
+    log.appendLine(`${now()} Downloading html from ${link}`)
     const html = await downloadHtmlFromLink(link)
+    log.appendLine(`${now()} Download html success`)
     const $ = cheerio.load(html, { decodeEntities: false })
 
-    const outputFileName = path.resolve(temmeDoc.uri.fsPath, '../', `${temmeDoc.fileName}.json`)
-    const outputDoc = await workspace.openTextDocument(Uri.file(outputFileName))
+    const outputDoc = await openOutputDocument(temmeDoc)
     await placeViewColumnTwoIfNotVisible(outputDoc)
     await window.showTextDocument(temmeDoc)
 
     async function onThisTemmeDocumentChange(changedLine: number) {
       try {
         const result = temme($, temmeDoc.getText())
-        log.appendLine('outputDoc.isClosed: ' + outputDoc.isClosed)
         await replaceWholeDocument(outputDoc, pprint(result))
       } catch (e) {
         if (e.name !== 'SyntaxError') {
@@ -167,8 +170,10 @@ async function startWatch(link?: string) {
           diagnosticCollection.set(temmeDoc.uri, [
             new Diagnostic(new Range(changedLine, 0, changedLine + 1, 0), e.message),
           ])
+          log.appendLine(e.stack || e.message)
+        } else {
+          log.appendLine(e.message)
         }
-        log.appendLine(e.message)
       }
     }
 
@@ -182,27 +187,27 @@ async function startWatch(link?: string) {
       }
     }
 
+    log.appendLine(`${now()} Start watching ${temmeDoc.uri.toString(false)}`)
     emitter.addListener('did-change-text-document', changeCallback)
 
     // 手动触发更新
     await onThisTemmeDocumentChange(0)
   } catch (e) {
     window.showErrorMessage(e.message)
+    log.appendLine(`${now()} Fail to start watching due to the following error:`)
     log.appendLine(e.stack || e.message)
+    status = 'ready'
+    statusBarController.autoUpdate()
   }
 }
 
 function stop() {
-  log.appendLine(`[temme] in stop() & current-status: ${status}`)
   if (status === 'watching') {
     emitter.removeListener('did-change-text-document', changeCallback)
     changeCallback = null
     status = 'ready'
     statusBarController.autoUpdate()
-  } else if (status === 'running') {
-    log.appendLine('cancelling a running task is not supported')
-  } else {
-    log.appendLine('status is ready. nothing to stop')
+    log.appendLine(`${now()} Stop watching`)
   }
 }
 

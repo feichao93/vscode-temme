@@ -20,7 +20,7 @@ export async function downloadHtmlFromLink(url: string) {
   if (isFileLink) {
     return fs.readFileSync(url, 'utf8')
   } else {
-    const response = await fetch(url)
+    const response = await fetch(url, { timeout: 30000 })
     if (response.ok) {
       return await response.text()
     } else {
@@ -38,7 +38,11 @@ export async function placeViewColumnTwoIfNotVisible(doc: TextDocument) {
 
 export async function openOutputDocument(temmeDoc: TextDocument) {
   const outputFileName = path.resolve(temmeDoc.uri.fsPath, '../', `${temmeDoc.fileName}.json`)
-  return await workspace.openTextDocument(Uri.file(outputFileName))
+  const exists = fs.existsSync(outputFileName)
+  const fileUri = Uri.file(outputFileName).with({
+    scheme: exists ? 'file' : 'untitled',
+  })
+  return await workspace.openTextDocument(fileUri)
 }
 
 export async function replaceWholeDocument(document: TextDocument, content: string) {
@@ -54,4 +58,16 @@ export function pprint(object: any) {
 
 export function isTemmeDocActive() {
   return window.activeTextEditor && window.activeTextEditor.document.languageId === 'temme'
+}
+
+export function now() {
+  const d = new Date()
+  const YYYY = String(d.getFullYear()).padStart(4, '0')
+  const MM = String(d.getMonth() + 1).padStart(2, '0')
+  const DD = String(d.getDate()).padStart(2, '0')
+  const HH = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const ss = String(d.getSeconds()).padStart(2, '0')
+  const SSS = String(d.getMilliseconds()).padStart(3, '0')
+  return `[${YYYY}-${MM}-${DD} ${HH}:${mm}:${ss}.${SSS}]`
 }
