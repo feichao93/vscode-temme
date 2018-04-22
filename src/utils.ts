@@ -4,28 +4,24 @@ import path from 'path'
 import { Range, TextDocument, Uri, ViewColumn, window, workspace, WorkspaceEdit } from 'vscode'
 
 /** 从链接中下载 HTML */
-export async function downloadHtmlFromLink(url: string) {
-  let isFileLink = false
-  // TODO 处理不同类型的链接
-  // http/https 链接: https://zhihu.com/xxx/yy
-  // files 链接   file:///D:\workspace\temme\....
-  // 相对路径链接  a.html
-  // 相对路径链接  ../parent-dir/sub-dir/foo.html
+export async function downloadHtmlFromLink(url: string, base: string) {
+  let isHttpLink = url.startsWith('http')
 
   if (url.startsWith('file:///')) {
     url = url.replace('file:///', '')
-    isFileLink = true
   }
 
-  if (isFileLink) {
-    return fs.readFileSync(url, 'utf8')
-  } else {
+  if (isHttpLink) {
     const response = await fetch(url, { timeout: 30000 })
     if (response.ok) {
       return await response.text()
     } else {
-      throw new Error(`Cannot download html from ${url}`)
+      const { status, statusText } = response
+      const msg = `Fail to download html from ${url}. Server responds with ${status} ${statusText}`
+      throw new Error(msg)
     }
+  } else {
+    return fs.readFileSync(path.resolve(base, url), 'utf8')
   }
 }
 

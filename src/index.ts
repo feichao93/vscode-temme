@@ -1,4 +1,5 @@
 import EventEmitter from 'events'
+import path from 'path'
 import temme, { cheerio, temmeParser } from 'temme'
 import { TAGGED_LINK_PATTERN, TEMME_MODE } from './constants'
 import StatusBarController from './StatusBarController'
@@ -112,12 +113,13 @@ async function runSelector(link?: string) {
     return
   }
   const temmeDoc = window.activeTextEditor!.document
+  const start = process.hrtime()
 
   try {
     status = 'running'
     statusBarController.setRunning()
     log.appendLine(`${now()} Downloading html from ${link}`)
-    const html = await downloadHtmlFromLink(link)
+    const html = await downloadHtmlFromLink(link, path.resolve(temmeDoc.uri.fsPath, '..'))
     log.appendLine(`${now()} Download html success`)
     const result = temme(html, temmeDoc.getText())
     const outputDoc = await openOutputDocument(temmeDoc)
@@ -131,6 +133,9 @@ async function runSelector(link?: string) {
     log.appendLine(e.stack || e.message)
   }
 
+  const diff = process.hrtime(start)
+  const timeInMS = diff[0] * 1e3 + diff[1] / 1e6
+  log.appendLine(`${now()} Selector executed in ${timeInMS}ms`)
   status = 'ready'
   statusBarController.autoUpdate()
 }
@@ -152,7 +157,7 @@ async function startWatch(link?: string) {
 
   try {
     log.appendLine(`${now()} Downloading html from ${link}`)
-    const html = await downloadHtmlFromLink(link)
+    const html = await downloadHtmlFromLink(link, path.resolve(temmeDoc.uri.fsPath, '..'))
     log.appendLine(`${now()} Download html success`)
     const $ = cheerio.load(html, { decodeEntities: false })
 
@@ -161,9 +166,13 @@ async function startWatch(link?: string) {
     await window.showTextDocument(temmeDoc)
 
     async function onThisTemmeDocumentChange(changedLine: number) {
+      const start = process.hrtime()
       try {
         const result = temme($, temmeDoc.getText())
         await replaceWholeDocument(outputDoc, pprint(result))
+        const diff = process.hrtime(start)
+        const timeInMS = diff[0] * 1e3 + diff[1] / 1e6
+        log.appendLine(`${now()} Selector executed in ${timeInMS}ms`)
       } catch (e) {
         if (e.name !== 'SyntaxError') {
           // TODO 错误不一定在当前编辑的这一行 或第一行
@@ -187,7 +196,7 @@ async function startWatch(link?: string) {
       }
     }
 
-    log.appendLine(`${now()} Start watching ${temmeDoc.uri.toString(false)}`)
+    log.appendLine(`${now()} Start watching ${temmeDoc.uri.toString(true)}`)
     emitter.addListener('did-change-text-document', changeCallback)
 
     // 手动触发更新
@@ -244,6 +253,8 @@ export function activate(ctx: ExtensionContext) {
       },
     },
   )
+
+  log.appendLine(`${now()} vscode-temme started.`)
 
   if (isTemmeDocActive()) {
     statusBarController.setReady()
