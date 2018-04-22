@@ -1,0 +1,28 @@
+// <PAWorks> http://bangumi.tv/anime/tag/P.A.WORKS/?sort=date
+// <京阿尼> http://bangumi.tv/anime/tag/%E4%BA%AC%E9%98%BF%E5%B0%BC/?sort=date
+// <宇宙芳文社> http://bangumi.tv/anime/tag/%E8%8A%B3%E6%96%87%E7%A4%BE/?sort=date
+
+ul#browserItemList li@|sortByRate|rateBetween(7, 7.5) {
+  &[id=$id];
+  .inner a{$name};
+  img[src=$imgUrl];
+  .fade{$rate|Number};
+  .rank{$rank|firstNumber};
+};
+
+/* 过滤得到评分在一定区间的数据 */
+filter rateBetween(low , high) {
+  return this.filter(item =>
+    low <= item.rate && item.rate <= high
+  )
+}
+
+/* 按照 rate 排序 */
+filter sortByRate() {
+  return this.sort((a, b) => b.rate - a.rate)
+}
+
+/* 获取一个字符串中的第一个数字 */
+filter firstNumber() {
+  return Number(this.match(/\d+/)[0])
+}

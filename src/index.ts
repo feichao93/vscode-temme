@@ -4,7 +4,6 @@ import temme, { cheerio, temmeParser } from 'temme'
 import { TAGGED_LINK_PATTERN, TEMME_MODE } from './constants'
 import StatusBarController from './StatusBarController'
 import TemmeCodeActionProvider from './TemmeCodeActionProvider'
-import TemmeDocumentSymbolProvider from './TemmeDocumentSymbolProvider'
 import {
   commands,
   Diagnostic,
@@ -24,7 +23,7 @@ import {
   isTemmeDocActive,
   now,
   openOutputDocument,
-  placeViewColumnTwoIfNotVisible,
+  placeOutputDocInAnotherViewColumnIfNotVisible,
   pprint,
   replaceWholeDocument,
 } from './utils'
@@ -129,8 +128,7 @@ async function runSelector(link?: string) {
     log.appendLine(`${now()} Fetch html success`)
     const result = temme(html, temmeDoc.getText())
     const outputDoc = await openOutputDocument(temmeDoc)
-    await placeViewColumnTwoIfNotVisible(outputDoc)
-    await window.showTextDocument(temmeDoc)
+    await placeOutputDocInAnotherViewColumnIfNotVisible(temmeDoc, outputDoc)
     await replaceWholeDocument(outputDoc, pprint(result))
     window.showInformationMessage('Success')
   } catch (e) {
@@ -173,8 +171,7 @@ async function startWatch(link?: string) {
     const $ = cheerio.load(html, { decodeEntities: false })
 
     const outputDoc = await openOutputDocument(temmeDoc)
-    await placeViewColumnTwoIfNotVisible(outputDoc)
-    await window.showTextDocument(temmeDoc)
+    await placeOutputDocInAnotherViewColumnIfNotVisible(temmeDoc, outputDoc)
 
     async function onThisTemmeDocumentChange() {
       const start = process.hrtime()
@@ -245,7 +242,6 @@ export function activate(ctx: ExtensionContext) {
     commands.registerCommand('temme.runSelector', runSelector),
     commands.registerCommand('temme.startWatch', startWatch),
     commands.registerCommand('temme.stop', stop),
-    languages.registerDocumentSymbolProvider(TEMME_MODE, new TemmeDocumentSymbolProvider()),
     languages.registerCodeActionsProvider(TEMME_MODE, new TemmeCodeActionProvider()),
     workspace.onDidChangeTextDocument(event => {
       if (event.document.languageId === 'temme') {

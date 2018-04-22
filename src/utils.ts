@@ -25,10 +25,20 @@ export async function downloadHtmlFromLink(url: string, base: string) {
   }
 }
 
-export async function placeViewColumnTwoIfNotVisible(doc: TextDocument) {
+export async function placeOutputDocInAnotherViewColumnIfNotVisible(
+  temmeDoc: TextDocument,
+  outputDoc: TextDocument,
+) {
   const visibleDocs = new Set(window.visibleTextEditors.map(editor => editor.document))
-  if (!visibleDocs.has(doc)) {
-    await window.showTextDocument(doc, ViewColumn.Two)
+  if (!visibleDocs.has(outputDoc)) {
+    const activeViewColumn = window.activeTextEditor
+      ? window.activeTextEditor.viewColumn
+      : ViewColumn.One
+    await window.showTextDocument(
+      outputDoc,
+      activeViewColumn === ViewColumn.Two ? ViewColumn.One : ViewColumn.Two,
+    )
+    await window.showTextDocument(temmeDoc, activeViewColumn)
   }
 }
 

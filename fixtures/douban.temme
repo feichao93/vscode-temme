@@ -1,0 +1,34 @@
+// 豆瓣电影介绍页面数据抓取
+// <烟花> https://movie.douban.com/subject/26930504/
+// <昨日青空> https://movie.douban.com/subject/26290410/
+// <命运之夜 天之杯 第一章> https://movie.douban.com/subject/25937991/
+// <请问您今天要来点兔子吗？？>  https://movie.douban.com/subject/27077068/
+
+// 电影的名称
+[property="v:itemreviewed"]{$title};
+// 电影上映年份
+.year{$year|substring(1, 5)|Number};
+// 电影导演
+[rel="v:directedBy"]@directedBy { &{$} };
+
+// 电影编剧
+:contains('编剧') + span{$storyFrom|split('/')||trim};
+// 电影主演(前三位)
+[rel="v:starring"]@starring|slice(0, 3){ &{ $ } };
+
+// 平均评分
+[property="v:average"]{$avgRating|Number};
+// 具体的评分情况
+.ratings-on-weight .item@ratingInfo {
+  span[title=$title];
+  .rating_per{$percentage};
+};
+
+// 电影剧情简介
+[property="v:summary"]{$summary|trim};
+
+// 喜欢这部电影的人也喜欢
+.recommendations-bd dl@recommendations {
+  img[alt=$name src=$imgUrl];
+  a[href=$url];
+}
