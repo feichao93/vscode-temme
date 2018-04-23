@@ -6,7 +6,7 @@
   version "0.7.0"
   resolved "https://registry.npmjs.org/@sindresorhus/is/-/is-0.7.0.tgz#9a06f4f137ee84d7df0460c1fdb1135ffa6c50fd"
 
-"@types/cheerio@^0.22.6":
+"@types/cheerio@^0.22.7":
   version "0.22.7"
   resolved "https://registry.npmjs.org/@types/cheerio/-/cheerio-0.22.7.tgz#4a92eafedfb2b9f4437d3a4410006d81114c66ce"
 
@@ -1399,7 +1399,7 @@ commander@2.11.0:
   version "2.11.0"
   resolved "https://registry.npmjs.org/commander/-/commander-2.11.0.tgz#157152fd1e7a6c8d98a5b715cf376df928004563"
 
-commander@^2.12.2, commander@^2.9.0:
+commander@^2.15.1, commander@^2.9.0:
   version "2.15.1"
   resolved "https://registry.npmjs.org/commander/-/commander-2.15.1.tgz#df46e867d0fc2aec66a34662b406a9ccafff5b0f"
 
@@ -3077,7 +3077,7 @@ into-stream@^3.1.0:
     from2 "^2.1.1"
     p-is-promise "^1.1.0"
 
-invariant@^2.2.2:
+invariant@^2.2.2, invariant@^2.2.4:
   version "2.2.4"
   resolved "https://registry.npmjs.org/invariant/-/invariant-2.2.4.tgz#610f3c92c9359ce1db616e538008d23ff35158e6"
   dependencies:
@@ -5725,15 +5725,15 @@ tar@^4:
     safe-buffer "^5.1.1"
     yallist "^3.0.2"
 
-temme@^0.6.1:
-  version "0.6.1"
-  resolved "https://registry.npmjs.org/temme/-/temme-0.6.1.tgz#2050aca62c626a5537f7d02aba151cb59b823dc5"
+temme@0.7.0:
+  version "0.7.0"
+  resolved "https://registry.npmjs.org/temme/-/temme-0.7.0.tgz#c8b83b577f62451c5f9cdffed4f38ef151070f94"
   dependencies:
-    "@types/cheerio" "^0.22.6"
+    "@types/cheerio" "^0.22.7"
     "@types/invariant" "^2.2.29"
     cheerio "^1.0.0-rc.1"
-    commander "^2.12.2"
-    invariant "^2.2.2"
+    commander "^2.15.1"
+    invariant "^2.2.4"
 
 temp@^0.8.1:
   version "0.8.3"

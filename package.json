@@ -4,7 +4,7 @@
   "license": "MIT",
   "displayName": "Temme",
   "description": "Temme selector support for VSCode.",
-  "version": "0.7.0-SNAPSHOT",
+  "version": "0.7.0",
   "publisher": "shinima",
   "repository": {
     "type": "git",
@@ -12,8 +12,7 @@
   },
   "main": "./out/index.js",
   "scripts": {
-    "grammar:start":
-      "supervisor --no-restart-on exit --watch temme.tmLanguage.yaml -e yaml -- compile.js",
+    "grammar:start": "supervisor --no-restart-on exit --watch temme.tmLanguage.yaml -e yaml -- compile.js",
     "grammar:build": "node compile.js",
     "start": "webpack --watch --mode=development",
     "build": "webpack --mode=production"
@@ -21,7 +20,9 @@
   "engines": {
     "vscode": "^1.22.0"
   },
-  "categories": ["Languages"],
+  "categories": [
+    "Languages"
+  ],
   "activationEvents": [
     "onLanguage:temme",
     "onCommand:temme.runSelector",
@@ -32,8 +33,13 @@
     "languages": [
       {
         "id": "temme",
-        "aliases": ["temme", "temme"],
-        "extensions": [".temme"],
+        "aliases": [
+          "temme",
+          "temme"
+        ],
+        "extensions": [
+          ".temme"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -78,7 +84,7 @@
   "dependencies": {
     "@types/node-fetch": "^1.6.8",
     "node-fetch": "^2.1.2",
-    "temme": "^0.6.1"
+    "temme": "0.7.0"
   },
   "prettier": {
     "printWidth": 100,
